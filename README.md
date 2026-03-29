@@ -1,86 +1,131 @@
 # Olist Brazilian E-Commerce Analysis
 
-End-to-end analysis of 100K+ real Brazilian e-commerce orders using **SQL Server** and **Power BI**.  
-From raw data to a fully interactive business dashboard — covering revenue growth, product performance, geographic distribution, delivery operations, and seller analytics.
+![Dashboard Preview](Dashboard/Olist_Dashboard.gif)
 
 ---
 
-## Dashboard Preview
+## What This Project Is
 
-![Olist Dashboard](Dashboard/Olist_Dashboard.gif)
+Olist is a real Brazilian e-commerce platform. This dataset covers **99,441 orders placed between 2016 and 2018** — with everything attached: payments, reviews, delivery timestamps, seller info, product categories, and customer locations across all Brazilian states.
+
+The goal wasn't to build a pretty dashboard. The goal was to answer real business questions from the data up — and let the numbers tell the story.
+
+**SQL Server did the heavy lifting. Power BI just showed the results.**
 
 ---
 
-## Project Structure
+## How the Analysis Was Built
+
+Most BI projects jump straight to visualization. This one didn't.
+
+Every step of the analysis — data exploration, cleaning decisions, business logic, and the final data model — was built and validated in SQL Server before Power BI was opened.
 
 ```
-📁 Olist-Brazilian-Ecommerce-Analysis
-    📁 EDA/                        → Exploratory analysis for all 8 source tables
-    📁 Analysis/
-        Master_View.sql            → Flat master view joining all tables
-        Star_Schema_Views.sql      → 5 views powering the Power BI data model
-        Star_Schema.png            → Power BI model view screenshot
-    📁 Dashboard/
-        Page1.png                  → Business Overview page
-        Page2.png                  → Operations & Delivery Performance page
-        Olist_Dashboard.pbix       → Full interactive Power BI file
-    README.md
+Raw CSVs (8 tables)
+    ↓
+SQL Server — imported and explored table by table (EDA/)
+    ↓
+Data quality issues identified and resolved in SQL
+    ↓
+Master View built — single flat dataset joining all 8 tables (Master_View.sql)
+    ↓
+6 business questions answered directly in SQL
+    ↓
+Star schema designed and built as SQL Server views (Star_Schema_Views.sql)
+    ↓
+Power BI connected on top — visualization only
 ```
 
+This approach means the analysis is fully reproducible without Power BI. Every finding in the dashboard can be traced back to a SQL query.
+
 ---
 
-## Tools & Technologies
+## The SQL Work
 
-| Layer | Tool |
+### Exploratory Data Analysis — 8 Tables
+
+Before writing a single business query, each table was explored independently: row counts, null checks, duplicate detection, date range validation, distribution of key fields. The EDA folder has a separate file for each table.
+
+Some things that came up:
+- `order_reviews` had **547 orders with multiple review entries** — conflicting scores that would silently skew any satisfaction metric if left uncleaned
+- `freight_value` had nulls that needed handling before any revenue calculation
+- Category names were in Portuguese and required joining a translation table
+
+### The Master View
+
+All 8 tables were joined into a single flat view (`vw_Olist_Master_Data`) that all business queries run against. The review deduplication issue was fixed here using a window function — keeping only the most recent review per order:
+
+```sql
+WITH Clean_Review AS (
+    SELECT order_id, review_score
+    FROM (
+        SELECT 
+            order_id,
+            review_score,
+            ROW_NUMBER() OVER(
+                PARTITION BY order_id 
+                ORDER BY review_creation_date DESC
+            ) AS Ranking
+        FROM order_reviews
+    ) AS RankedReviews
+    WHERE Ranking = 1
+)
+```
+
+### Star Schema — Built in SQL, Not in Power BI
+
+The data model wasn't dragged together inside Power BI. Five views were written in SQL Server first:
+
+| View | Type | Description |
+|---|---|---|
+| `vw_Fact_Order_Items` | Fact | Line-level transactions with price and freight |
+| `vw_Dim_Orders` | Dimension | Order status, timestamps, review scores |
+| `vw_Dim_Products` | Dimension | Product categories (translated to English) |
+| `vw_Dim_Sellers` | Dimension | Seller IDs and locations |
+| `vw_Dim_Customers` | Dimension | Customer state mapping |
+
+Power BI imported these views directly. The model was already clean before it got there.
+
+---
+
+## Business Questions & Findings
+
+### Is the business growing?
+
+Yes — consistently. Revenue grew month over month from January 2017 through mid-2018, with one standout exception: **November 2017 produced the largest single-month spike in the entire dataset.** Black Friday demand was real and measurable.
+
+### Which product categories drive the most revenue?
+
+| Category | Revenue |
 |---|---|
-| Data Storage | SQL Server (SSMS) |
-| Data Modeling | Star Schema — 1 Fact + 4 Dims |
-| Analysis | T-SQL — CTEs, Window Functions, Aggregations |
-| Visualization | Power BI Desktop — DAX, Power Query |
+| Health & Beauty | $1.4M |
+| Watches & Gifts | $1.3M |
+| Bed, Bath & Table | $1.2M |
+| Sports & Leisure | $1.2M |
+| Computers & Accessories | $1.1M |
 
----
+Five categories. That's where the money is. Everything else is a long tail.
 
-## The Dataset
+### Where are the customers?
 
-Public Brazilian e-commerce dataset provided by Olist, covering **Sep 2016 – Aug 2018**.
+São Paulo alone accounts for **~41% of all orders and $5.77M in revenue**. The top 5 states (SP, RJ, MG, RS, PR) represent roughly 80% of total business. The other 22 states combined make up the remaining 20% — which is either a distribution problem or an untapped opportunity depending on how you look at it.
 
-| Table | Description |
-|---|---|
-| olist_orders | 99,441 orders with status and timestamps |
-| olist_order_items | Line items with price and freight |
-| olist_order_payments | Payment method and value |
-| olist_order_reviews | Customer review scores and comments |
-| olist_customers | Customer location data |
-| olist_sellers | Seller location data |
-| olist_products | Product dimensions and category |
-| olist_geolocation | Zip code coordinates |
+### How efficient is fulfillment?
 
----
+- Average delivery time: **12.5 days**
+- On-time rate: **91.89%** — over 9 in 10 orders arrived on or before the promised date
 
-## Business Questions Answered
+That's a solid operational baseline. But the next finding explains why delivery speed still matters a lot.
 
-### BQ1 — Revenue Trend: Is the business growing?
-Consistent month-over-month growth from Jan 2017 through mid-2018.  
-**Black Friday Nov 2017** produced the single largest revenue spike in the dataset — confirming strong seasonal demand response.
+### Who are the top sellers?
 
-### BQ2 — Product Performance: Which categories drive revenue?
-**Health & Beauty leads at $1.4M**, followed by Watches & Gifts ($1.3M) and Bed, Bath & Table ($1.2M).  
-The top 5 categories account for the majority of total revenue — clear signal for inventory and marketing prioritization.
+3,095 active sellers. Average revenue per seller: **$5.12K**. Top seller: **$249K**.
 
-### BQ3 — Geography: Where are the customers?
-**São Paulo (SP) dominates with ~41% of all orders** and $5.77M in revenue.  
-The top 5 states (SP, RJ, MG, RS, PR) represent approximately 80% of total business volume — the rest of Brazil is largely untapped.
+That gap tells you everything — a small group of high-volume sellers drives the majority of revenue. The bottom of the seller pool is barely active.
 
-### BQ4 — Delivery Operations: How efficient is fulfillment?
-**Average delivery time: 12.5 days** across 99K+ orders.  
-**On-time rate: 91.89%** — over 9 in 10 orders delivered on or before the estimated date.
+### What actually drives customer satisfaction?
 
-### BQ5 — Seller Performance: Who are the top sellers?
-Top seller generated **$249K in revenue** across 1,156 items sold.  
-Significant performance variance exists across the 3,095 active sellers — average revenue per seller is $5.12K, indicating a long tail of low-volume sellers.
-
-### BQ6 — Review Scores: What drives customer satisfaction?
-**Delivery time is the single strongest predictor of review score.**
+This was the most interesting finding in the project.
 
 | Review Score | Avg Delivery Time |
 |---|---|
@@ -90,26 +135,17 @@ Significant performance variance exists across the 3,095 active sellers — aver
 | ⭐⭐ 2 stars | 13.15 days |
 | ⭐ 1 star | 16.42 days |
 
-A **7-day gap** between 1-star and 5-star delivery times. Faster delivery = better reviews — consistently, at every score level.
+**7-day gap between a 1-star and a 5-star experience.** The pattern holds at every score level without exception. Delivery speed doesn't just correlate with satisfaction — it predicts it.
 
 ---
 
 ## Data Model
 
-Star schema built in Power BI on top of SQL Server views.
-
 ![Star Schema](Analysis/Star_Schema.png)
-
-**Relationships:**
-- `Fact_Order_Items` → `Dim_Orders` on `order_id`
-- `Fact_Order_Items` → `Dim_Products` on `product_id`
-- `Fact_Order_Items` → `Dim_Sellers` on `seller_id`
-- `Dim_Orders` → `Dim_Customers` on `customer_id`
-- `Dim_Date` → `Dim_Orders` on `order_date`
 
 ---
 
-## Key Metrics
+## Key Numbers
 
 | Metric | Value |
 |---|---|
@@ -123,8 +159,38 @@ Star schema built in Power BI on top of SQL Server views.
 
 ---
 
-## Author
+## Project Structure
 
-**Saleh Hossam** — Junior Data Analyst  
-📍 Cairo, Egypt  
+```
+📁 Olist-Brazilian-Ecommerce-Analysis
+    📁 EDA/                       → One SQL file per source table. Null checks,
+                                    distributions, duplicates, date ranges.
+    📁 Analysis/
+        Master_View.sql           → Joins all 8 tables. Handles review deduplication
+                                    with ROW_NUMBER() window function.
+        Star_Schema_Views.sql     → 5 SQL Server views that feed the Power BI model.
+        Star_Schema.png           → Data model screenshot from Power BI.
+    📁 Dashboard/
+        Page1.png                 → Business Overview (revenue, categories, geography)
+        Page2.png                 → Operations & Delivery Performance
+        Olist_Dashboard.pbix      → Full Power BI file — download to interact
+    README.md
+```
+
+---
+
+## Tools
+
+| Tool | What it did |
+|---|---|
+| SQL Server (SSMS) | EDA, data cleaning, business analysis, data modeling |
+| T-SQL | CTEs, window functions, aggregations, view creation |
+| Power BI Desktop | Connected to SQL views — visualization and dashboard only |
+| DAX | KPI measures, time intelligence, MoM growth |
+| Power Query | Minor transformations, seller label formatting |
+
+---
+
+**Saleh Hossam** — Data Analyst · Cairo, Egypt
+
 [Portfolio](https://saleh-hossam.github.io) · [LinkedIn](https://www.linkedin.com/in/saleh-hossam) · [GitHub](https://github.com/Saleh-Hossam)
