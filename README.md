@@ -140,9 +140,10 @@ Revenue and order counts were reconciled between the master view and star schema
 
 Two pages:
 
-**Page 1** — Business Overview: Revenue trends, category breakdown, geographic distribution. The kind of view a commercial team would open in a Monday meeting.
+Page 1 — Business Overview: Revenue trends, category breakdown, geographic distribution. The kind of view a commercial team would open in a Monday meeting.
 
-**Page 2** — Operations & Delivery: Fulfillment performance, delivery time by state, on-time rate. Answers the question: where specifically is delivery failing?
+Page 2 — Operations & Delivery: Fulfillment performance, delivery time by state, on-time rate. Answers the question: where specifically is delivery failing?
+
 ---
 
 ## Project Structure
